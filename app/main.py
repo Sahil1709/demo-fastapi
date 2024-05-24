@@ -6,7 +6,8 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import File, UploadFile
 import json
-
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from database import crud, models, schemas
 from database.database import SessionLocal, engine
 import datetime, os
@@ -14,6 +15,7 @@ import datetime, os
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+scheduler = AsyncIOScheduler()
 
 # Dependency
 def get_db():
@@ -182,3 +184,38 @@ def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 # upload & delete files asynchroneously
 # every minute upload files from queue
 # every 5 minutes delete files older than 10 minutes
+
+# Function to delete old files
+def delete_old_files():
+    print("Searching for old files........")
+    with SessionLocal() as db:
+        files = crud.get_all_files(db)
+        now = datetime.datetime.now()
+        for file in files:
+            file_timestamp_str = file.path.split("/")[-1].split("_")[0]
+            file_timestamp = datetime.datetime.strptime(file_timestamp_str, "%Y%m%d-%H%M%S")
+            file_age = (now - file_timestamp).total_seconds()
+            if file_age > 30 * 60:  # 30 minutes
+                try:
+                    os.remove(file.path)
+                except FileNotFoundError:
+                    pass
+                crud.delete_file(db, file.id)
+                print(f"Deleted file {file.filename} (ID: {file.id})") 
+
+# Scheduler setup
+scheduler.add_job(
+    delete_old_files,
+    trigger=IntervalTrigger(seconds=10),
+    id="delete_old_files",
+    name="Delete old files every 5 minutes",
+    replace_existing=True,
+)
+
+@app.on_event("startup")
+async def startup_event():
+    scheduler.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
