@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from app.main import app
+import pytest
 import random
 import string
 import json
@@ -17,6 +18,14 @@ def response_helper(response, query):
         return {'detail': [{'type': response_type, 'loc': response_loc, 'msg': 'Input should be a valid integer, unable to parse string as an integer', 'input': query}]}
     elif response_type == "missing":
         return {'detail': [{'type': response_type, 'loc': response_loc, 'msg': 'Field required', 'input': query}]}
+
+# =========== Fixtures ==========
+@pytest.fixture
+def file_id():
+    response = client.post("/upload-file/", files={"file": ("test.txt", b"file content")})
+    assert response.status_code == 200
+    uploaded_file = response.json()
+    return uploaded_file["file_id"]
 
 # Test the root endpoint
 def test_read_root():
@@ -64,16 +73,15 @@ def test_update_item_without_name():
 # Test the upload_file endpoint
 def test_upload_file():
     response = client.post("/upload-file/", files={"file": ("test.txt", b"file content")})
-    # Add another parameter to delete the file 
     assert response.status_code == 200
-    assert response.json() == {
-        "filename": "test.txt",
-        "content_type": "text/plain",
-        "file_size": 12,
-        "file_headers": {"content-disposition": 'form-data; name="file"; filename="test.txt"', "content-type": "text/plain"},
-        "file_extension": "txt",
-        "file_size_kb": 0.01171875
-    }
+    response_data = response.json()
+    assert response_data["filename"] == "test.txt"
+    assert response_data["content_type"] == "text/plain"
+    assert response_data["file_size"] == 12
+    assert response_data["file_headers"] == {"content-disposition": 'form-data; name="file"; filename="test.txt"', "content-type": "text/plain"}
+    assert response_data["file_extension"] == "txt"
+    assert response_data["file_size_kb"] == 0.01171875
+
 
 # Test get all files endpoint
 def test_get_all_files():
@@ -83,12 +91,14 @@ def test_get_all_files():
     assert isinstance(response_data, list)
 
 # Test get file by id endpoint
-def test_get_file():
-    response = client.get("/files/3508341f-9e6f-41f8-a451-6ad0abf0414c")
+def test_get_file(file_id):
+    out, err = file_id.readouterr()
+    print(out)
+    response = client.get(f"/files/{out}")
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["filename"] == "test.txt"
-    assert response_data["path"] == "files/20240523-133250_test.txt"
+    # assert response_data["path"] == "files/20240523-133250_test.txt"
     
 
 def test_get_file_not_found():

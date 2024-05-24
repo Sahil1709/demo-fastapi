@@ -87,7 +87,8 @@ async def upload_file(file: UploadFile = File(...),  db: Session = Depends(get_d
         contents = await file.read()
         f.write(contents)
 
-    crud.create_file(db, file.filename, file_path)
+    created_file = crud.create_file(db, file.filename, file_path)
+    metadata["file_id"] = created_file.id
     
     return metadata
 

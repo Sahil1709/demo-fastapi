@@ -7,7 +7,7 @@ from .database import Base
 class File(Base):
     __tablename__ = "files"
 
-    id = Column(String, primary_key=True, default=str(uuid.uuid4))
+    id = Column(String, primary_key=True, default=str(uuid.uuid4()))
     filename = Column(String)
     path = Column(String)
 
