@@ -11,6 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from database import crud, models, schemas
 from database.database import SessionLocal, engine
 import datetime, os
+from queue import Queue
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -70,9 +71,11 @@ def update_item(item_id: int, item: Item):
 #     }
 #     return response_data
 
+file_queue = Queue()
 
 @app.post("/upload-file/")
 async def upload_file(file: UploadFile = File(...),  db: Session = Depends(get_db)):
+    contents = await file.read()
     metadata = {
         "filename": file.filename,
         "content_type": file.content_type,
@@ -80,19 +83,12 @@ async def upload_file(file: UploadFile = File(...),  db: Session = Depends(get_d
         "file_headers": file.headers,
         "file_extension": file.filename.split(".")[-1],
         "file_size_kb": file.size / 1024,
+        "contents": contents,
     }
 
-    current_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    file_path = f'files/{current_date}_{file.filename}'
-
-    with open(file_path, "wb") as f:
-        contents = await file.read()
-        f.write(contents)
-
-    created_file = crud.create_file(db, file.filename, file_path)
-    metadata["file_id"] = created_file.id
+    file_queue.put(metadata)
     
-    return metadata
+    return {"filename": file.filename, "status": "File added to upload queue"}
 
 @app.get("/files")
 def get_all_files(db: Session = Depends(get_db)):
@@ -180,10 +176,7 @@ def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 
 # TODO:
-# look into async scheduler
-# upload & delete files asynchroneously
 # every minute upload files from queue
-# every 5 minutes delete files older than 10 minutes
 
 # Function to delete old files
 def delete_old_files():
@@ -203,13 +196,37 @@ def delete_old_files():
                 crud.delete_file(db, file.id)
                 print(f"Deleted file {file.filename} (ID: {file.id})") 
 
+# Function to upload files from the queue
+async def upload_files_from_queue():
+    print("Uploading files from the queue.......")
+    with SessionLocal() as db:
+        while not file_queue.empty():
+            metadata = file_queue.get()
+            current_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            file_path = f'files/{current_date}_{metadata["filename"]}'
+
+            with open(file_path, "wb") as f:
+                f.write(metadata["contents"])
+
+            created_file = crud.create_file(db, metadata["filename"], file_path)
+            metadata["file_id"] = created_file.id
+
+            print(f"Uploaded file {metadata['filename']} (ID: {metadata['file_id']})")
+
 # Scheduler setup
 scheduler.add_job(
     delete_old_files,
-    trigger=IntervalTrigger(seconds=10),
+    trigger=IntervalTrigger(minutes=5),
     id="delete_old_files",
     name="Delete old files every 5 minutes",
     replace_existing=True,
+)
+
+scheduler.add_job(
+    upload_files_from_queue,
+    trigger=IntervalTrigger(seconds=20),
+    id="upload_files_from_queue",
+    name="Upload Files from the queue every 1 minute",
 )
 
 @app.on_event("startup")

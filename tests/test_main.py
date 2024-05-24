@@ -76,11 +76,12 @@ def test_upload_file():
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["filename"] == "test.txt"
-    assert response_data["content_type"] == "text/plain"
-    assert response_data["file_size"] == 12
-    assert response_data["file_headers"] == {"content-disposition": 'form-data; name="file"; filename="test.txt"', "content-type": "text/plain"}
-    assert response_data["file_extension"] == "txt"
-    assert response_data["file_size_kb"] == 0.01171875
+    assert response_data["status"] == "File added to upload queue"
+    # assert response_data["content_type"] == "text/plain"
+    # assert response_data["file_size"] == 12
+    # assert response_data["file_headers"] == {"content-disposition": 'form-data; name="file"; filename="test.txt"', "content-type": "text/plain"}
+    # assert response_data["file_extension"] == "txt"
+    # assert response_data["file_size_kb"] == 0.01171875
 
 
 # Test get all files endpoint
