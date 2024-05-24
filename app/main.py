@@ -59,18 +59,6 @@ def read_item(item_id: int, q: Union[str, None] = None):
 def update_item(item_id: int, item: Item):
     return {"item_name": item.name, "item_id": item_id}
 
-# @app.post("/files/")
-# async def create_file(file: Annotated[bytes, File()]):
-#     file_size = len(file)
-#     file_name = file.filename if hasattr(file, "filename") else "unknown"
-#     with open(f'files/{file_name}', "wb") as f:
-#         f.write(file)
-#     response_data = {
-#         "file_size": file_size,
-#         "file_name": file_name
-#     }
-#     return response_data
-
 file_queue = Queue()
 
 @app.post("/upload-file/")
@@ -174,10 +162,6 @@ def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     items = crud.get_items(db, skip=skip, limit=limit)
     return items
 
-
-# TODO:
-# every minute upload files from queue
-
 # Function to delete old files
 def delete_old_files():
     print("Searching for old files........")
@@ -188,7 +172,7 @@ def delete_old_files():
             file_timestamp_str = file.path.split("/")[-1].split("_")[0]
             file_timestamp = datetime.datetime.strptime(file_timestamp_str, "%Y%m%d-%H%M%S")
             file_age = (now - file_timestamp).total_seconds()
-            if file_age > 30 * 60:  # 30 minutes
+            if file_age > 20 * 60:  # 20 minutes
                 try:
                     os.remove(file.path)
                 except FileNotFoundError:
@@ -213,6 +197,26 @@ async def upload_files_from_queue():
 
             print(f"Uploaded file {metadata['filename']} (ID: {metadata['file_id']})")
 
+# Function to delete excess users
+async def delete_excess_users():
+    print("Deleting excess users.......")
+    with SessionLocal() as db:
+        users = crud.get_users(db)
+        if len(users) > 10:
+            users_to_delete = users[10:]
+            for user in users_to_delete:
+                crud.delete_user(db, user.id)
+
+# Function to delete excess items
+async def delete_excess_items():
+    print("Deleting excess items.......")
+    with SessionLocal() as db:
+        items = crud.get_items(db)
+        if len(items) > 10:
+            items_to_delete = items[10:]
+            for item in items_to_delete:
+                crud.delete_item(db, item.id)
+
 # Scheduler setup
 scheduler.add_job(
     delete_old_files,
@@ -224,9 +228,25 @@ scheduler.add_job(
 
 scheduler.add_job(
     upload_files_from_queue,
-    trigger=IntervalTrigger(seconds=20),
+    trigger=IntervalTrigger(minutes=1),
     id="upload_files_from_queue",
     name="Upload Files from the queue every 1 minute",
+)
+
+scheduler.add_job(
+    delete_excess_users,
+    trigger=IntervalTrigger(minutes=10),
+    id="delete_excess_users",
+    name="Delete excess users every 10 minutes",
+    replace_existing=True,
+)
+
+scheduler.add_job(
+    delete_excess_items,
+    trigger=IntervalTrigger(minutes=10),
+    id="delete_excess_items",
+    name="Delete excess items every 10 minutes",
+    replace_existing=True,
 )
 
 @app.on_event("startup")
