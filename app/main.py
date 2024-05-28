@@ -11,12 +11,12 @@ from apscheduler.triggers.interval import IntervalTrigger
 from database import crud, models, schemas
 from database.database import SessionLocal, engine
 import datetime, os
-from queue import Queue
+from app.schedulers import scheduler
+from app.queue import file_queue
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-scheduler = AsyncIOScheduler()
 
 # Dependency
 def get_db():
@@ -44,11 +44,17 @@ class Item(BaseModel):
     price: float
     is_offer: Union[bool, None] = None
 
+@app.on_event("startup")
+async def startup_event():
+    scheduler.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
 
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
-
 
 @app.get("/items/{item_id}")
 def read_item(item_id: int, q: Union[str, None] = None):
@@ -58,8 +64,6 @@ def read_item(item_id: int, q: Union[str, None] = None):
 @app.put("/items/{item_id}")
 def update_item(item_id: int, item: Item):
     return {"item_name": item.name, "item_id": item_id}
-
-file_queue = Queue()
 
 @app.post("/upload-file/")
 async def upload_file(file: UploadFile = File(...),  db: Session = Depends(get_db)):
@@ -162,97 +166,9 @@ def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     items = crud.get_items(db, skip=skip, limit=limit)
     return items
 
-# Function to delete old files
-def delete_old_files():
-    print("Searching for old files........")
-    with SessionLocal() as db:
-        files = crud.get_all_files(db)
-        now = datetime.datetime.now()
-        for file in files:
-            file_timestamp_str = file.path.split("/")[-1].split("_")[0]
-            file_timestamp = datetime.datetime.strptime(file_timestamp_str, "%Y%m%d-%H%M%S")
-            file_age = (now - file_timestamp).total_seconds()
-            if file_age > 20 * 60:  # 20 minutes
-                try:
-                    os.remove(file.path)
-                except FileNotFoundError:
-                    pass
-                crud.delete_file(db, file.id)
-                print(f"Deleted file {file.filename} (ID: {file.id})") 
 
-# Function to upload files from the queue
-async def upload_files_from_queue():
-    print("Uploading files from the queue.......")
-    with SessionLocal() as db:
-        while not file_queue.empty():
-            metadata = file_queue.get()
-            current_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            file_path = f'files/{current_date}_{metadata["filename"]}'
 
-            with open(file_path, "wb") as f:
-                f.write(metadata["contents"])
 
-            created_file = crud.create_file(db, metadata["filename"], file_path)
-            metadata["file_id"] = created_file.id
 
-            print(f"Uploaded file {metadata['filename']} (ID: {metadata['file_id']})")
-
-# Function to delete excess users
-async def delete_excess_users():
-    print("Deleting excess users.......")
-    with SessionLocal() as db:
-        users = crud.get_users(db)
-        if len(users) > 10:
-            users_to_delete = users[10:]
-            for user in users_to_delete:
-                crud.delete_user(db, user.id)
-
-# Function to delete excess items
-async def delete_excess_items():
-    print("Deleting excess items.......")
-    with SessionLocal() as db:
-        items = crud.get_items(db)
-        if len(items) > 10:
-            items_to_delete = items[10:]
-            for item in items_to_delete:
-                crud.delete_item(db, item.id)
-
-# Scheduler setup
-scheduler.add_job(
-    delete_old_files,
-    trigger=IntervalTrigger(minutes=5),
-    id="delete_old_files",
-    name="Delete old files every 5 minutes",
-    replace_existing=True,
-)
-
-scheduler.add_job(
-    upload_files_from_queue,
-    trigger=IntervalTrigger(minutes=1),
-    id="upload_files_from_queue",
-    name="Upload Files from the queue every 1 minute",
-)
-
-scheduler.add_job(
-    delete_excess_users,
-    trigger=IntervalTrigger(minutes=10),
-    id="delete_excess_users",
-    name="Delete excess users every 10 minutes",
-    replace_existing=True,
-)
-
-scheduler.add_job(
-    delete_excess_items,
-    trigger=IntervalTrigger(minutes=10),
-    id="delete_excess_items",
-    name="Delete excess items every 10 minutes",
-    replace_existing=True,
-)
-
-@app.on_event("startup")
-async def startup_event():
-    scheduler.start()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    scheduler.shutdown()
+# todo:
+# - nnotate funcions, comments and docstrings, for tests and main 
