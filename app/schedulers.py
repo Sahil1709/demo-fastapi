@@ -13,7 +13,7 @@ from app.queue import file_queue
 
 scheduler = AsyncIOScheduler()
 
-# Function to delete old files
+# Function to delete files older than 20 minutes
 def delete_old_files():
     print("Searching for old files........")
     with SessionLocal() as db:
@@ -68,7 +68,7 @@ async def delete_excess_items():
             for item in items_to_delete:
                 crud.delete_item(db, item.id)
 
-# Scheduler setup
+# Scheduler job that runs delete_old_files every 5 minutes
 scheduler.add_job(
     delete_old_files,
     trigger=IntervalTrigger(minutes=5),
@@ -77,13 +77,15 @@ scheduler.add_job(
     replace_existing=True,
 )
 
+# Scheduler job that runs upload_files_from_queue every 4 minutes
 scheduler.add_job(
     upload_files_from_queue,
-    trigger=IntervalTrigger(seconds=1),
+    trigger=IntervalTrigger(minutes=4),
     id="upload_files_from_queue",
-    name="Upload Files from the queue every 1 minute",
+    name="Upload Files from the queue every 4 minute",
 )
 
+# Scheduler job that runs delete_excess_users every 10 minutes
 scheduler.add_job(
     delete_excess_users,
     trigger=IntervalTrigger(minutes=10),
@@ -92,6 +94,7 @@ scheduler.add_job(
     replace_existing=True,
 )
 
+# Scheduler job that runs delete_excess_items every 10 minutes
 scheduler.add_job(
     delete_excess_items,
     trigger=IntervalTrigger(minutes=10),
