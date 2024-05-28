@@ -14,6 +14,8 @@ from pydantic import BaseModel
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from app.schedulers import scheduler
+from app.schedulers import startup_event
+from app.schedulers import shutdown_event
 
 # other imports
 import json
@@ -23,6 +25,8 @@ from app.queue import file_queue
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+app.add_event_handler('startup', startup_event)
+app.add_event_handler('shutdown', shutdown_event)
 
 # Dependency
 def get_db():
@@ -52,15 +56,6 @@ class Item(BaseModel):
     price: float
     is_offer: Union[bool, None] = None
 
-# start the scheduler
-@app.on_event("startup")
-async def startup_event():
-    scheduler.start()
-
-# shutdown the scheduler
-@app.on_event("shutdown")
-async def shutdown_event():
-    scheduler.shutdown()
 
 # root endpoint
 @app.get("/")

@@ -13,6 +13,14 @@ from app.queue import file_queue
 
 scheduler = AsyncIOScheduler()
 
+# Function to run at startup
+async def startup_event():
+    scheduler.start()
+
+# Function to run at shutdown
+async def shutdown_event():
+    scheduler.shutdown()
+
 # Function to delete files older than 20 minutes
 def delete_old_files():
     print("Searching for old files........")
